@@ -12,3 +12,4 @@ src/__pycache__/
 
 # Data directory
 data/ 
+logs/
