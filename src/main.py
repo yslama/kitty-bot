@@ -2,7 +2,7 @@
 
 import schedule
 import time
-from kitty_checker import check_cats  # Updated import since files are in same directory
+from .kitty_checker import check_cats  # Add the dot to indicate relative import
 import logging
 from datetime import datetime
 
