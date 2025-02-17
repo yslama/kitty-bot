@@ -65,9 +65,9 @@ KITTY_RECEIVER_EMAIL=recipient@email.com
 
 ## Usage
 
-Run the script from the project root directory:
+For local development, run:
 ```bash
-python src/kitty_checker.py
+python src/main.py
 ```
 
 The script will automatically:
@@ -80,16 +80,27 @@ The script will automatically:
 ```
 kitty-bot/
 ├── src/
-│   └── kitty_checker.py    # Main script
-├── data/                  # Created automatically
-│   └── kitties.csv        # Database of found kittens
-├── logs/                 # Log files directory
-│   └── kitty_checker.log  # Log file
-├── .env                  # Environment variables (create this)
-├── .gitignore            # Git ignore file
-├── README.txt            # Project documentation
-└── LICENSE              # MIT License file
+│   ├── main.py           # Entry point and scheduler
+│   └── kitty_checker.py  # Core functionality
+├── data/                # Created automatically
+│   └── kitties.csv      # Database of found kittens
+├── logs/               # Log files directory
+│   └── kitty_checker.log # Log file
+├── .env                # Environment variables (create this)
+├── .gitignore          # Git ignore file
+├── requirements.txt    # Python dependencies
+├── Procfile           # Railway process file
+├── runtime.txt        # Python version specification
+├── README.txt          # Project documentation
+└── LICENSE            # MIT License file
 ```
+
+## Deployment
+
+This project is configured for Railway deployment. The following files are used:
+- `requirements.txt`: Lists all Python dependencies
+- `Procfile`: Specifies the command to run the worker
+- `runtime.txt`: Specifies the Python version
 
 ## Logging
 - Logs are written to `kitty_checker.log`

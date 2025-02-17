@@ -1,8 +1,9 @@
 # Environment variables
 .env
+.env.*
 
 # Logs
-*.log
+logs/
 
 # Python cache
 __pycache__/
@@ -11,5 +12,7 @@ __pycache__/
 src/__pycache__/
 
 # Data directory
-data/ 
-logs/
+data/
+
+# OS files
+.DS_Store
