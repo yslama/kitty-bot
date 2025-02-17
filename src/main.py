@@ -4,6 +4,7 @@ import schedule
 import time
 from kitty_checker import check_cats  # Updated import since files are in same directory
 import logging
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(
@@ -11,7 +12,16 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+def is_business_hours():
+    """Check if current time is between 9 AM and 6 PM"""
+    now = datetime.now()
+    return 9 <= now.hour < 18
+
 def job():
+    if not is_business_hours():
+        logging.info("Outside business hours, skipping check")
+        return
+        
     try:
         logging.info("Starting scheduled check")
         check_cats()
@@ -22,11 +32,14 @@ def job():
 def main():
     logging.info("Starting kitty checker service")
     
-    # Run immediately on startup
-    job()
+    # Run immediately if within business hours
+    if is_business_hours():
+        job()
+    else:
+        logging.info("Starting outside business hours, waiting for next business day")
     
-    # Then schedule to run every 3 hours
-    schedule.every(3).hours.do(job)
+    # Schedule to run every 15 minutes
+    schedule.every(15).minutes.do(job)
     
     # Keep the script running
     while True:
