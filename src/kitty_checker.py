@@ -34,7 +34,7 @@ database_url = os.getenv('DATABASE_URL')
 
 def extract_details(facts_text):
     age_match = re.search(r'Age:\s*([\d]{1}) m', facts_text)
-    gender_match = re.search(r'Gender:\s*(Male)', facts_text)
+    gender_match = re.search(r'Gender:\s*(Male|Female)', facts_text)
 
     if age_match and gender_match:
         # print(f"Age: {age_match.group(1).strip()}, Gender: {gender_match.group(1).strip()}")
