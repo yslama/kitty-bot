@@ -166,7 +166,7 @@ def check_cats():
                     
                 age, gender = result
                 
-                if age is not None and isinstance(age, (int, float)) and age <= 4 and gender is not None:
+                if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
                     # Try to add to database
                     if database.add_kitty(name, age, gender, link):
                         new_cats.append({
