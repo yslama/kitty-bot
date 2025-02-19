@@ -30,6 +30,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+database_url = os.getenv('DATABASE_URL')
+
 def extract_details(facts_text):
     age_match = re.search(r'Age:\s*([\d]{1}) m', facts_text)
     gender_match = re.search(r'Gender:\s*(Male)', facts_text)

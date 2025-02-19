@@ -15,7 +15,7 @@ if DATABASE_URL is None:
     raise ValueError("""
     DATABASE_URL environment variable is not set. 
     Please check your .env file exists and contains:
-    DATABASE_URL=postgresql://yasminesalamelama@localhost:5432/kitty_db
+    DATABASE_URL=postgresql://username:password@localhost:5432/dbname
     """)
 
 # Create SQLAlchemy engine
