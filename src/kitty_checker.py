@@ -32,11 +32,16 @@ logging.basicConfig(
 # Constants
 CAT_PATH = os.path.join(PROJECT_ROOT, "data", "kitties.csv")
 
-def extract_age(facts_text):
+def extract_details(facts_text):
     age_match = re.search(r'Age:\s*([\d]{1}) m', facts_text)
-    if age_match:
-        return int(age_match.group(1).strip())
-    return None
+    gender_match = re.search(r'Gender:\s*(Male)', facts_text)
+
+    if age_match and gender_match:
+        print(f"Age: {age_match.group(1).strip()}, Gender: {gender_match.group(1).strip()}")
+        return int(age_match.group(1).strip()), gender_match.group(1).strip()
+    return None, None
+
+
 
 def get_age(link):
     options = Options()
@@ -55,16 +60,16 @@ def get_age(link):
         try:
             facts_element = driver.find_element(By.CLASS_NAME, "adoptionFacts__div")
             facts = facts_element.text
-            age = extract_age(facts)
-            if age is not None: 
-                return age
+            age, gender = extract_details(facts)
+            if age is not None and gender is not None: 
+                return age, gender
         except Exception as e:
             logging.error(f"Error finding facts: {str(e)}")
-            return None
+            return None, None
             
     except Exception as e:
         logging.error(f"Error loading page: {str(e)}")
-        return None
+        return None, None
     finally:
         driver.quit()
 
@@ -90,11 +95,12 @@ def send_summary_email(new_cats):
     body = "New kittens found at SF SPCA!\n\n"
     for cat in new_cats:
         body += f"""
-Name: {cat['name']}
-Age: {cat['age']} months
-Link: {cat['link']}
-------------------------
-"""
+                    Name: {cat['name']}
+                    Age: {cat['age']} months
+                    Gender: {cat['gender']}
+                    Link: {cat['link']}
+                    ------------------------
+                    """
     body += "\nGo check them out!"
     
     message.attach(MIMEText(body, "plain"))
@@ -145,17 +151,26 @@ def check_cats():
                 name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
                 name = name_element.text
                 link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
-                age = get_age(link)
+                result = get_age(link)
                 
+                # Skip if we couldn't get age and gender
+                if result is None or result == (None, None):
+                    logging.info(f"Skipping {name}: not be the perfect kitty bro for Miske!")
+                    continue
+                    
+                age, gender = result
+
                 cat_record = {
                     "name": name,
                     "link": link,
-                    "age": age
+                    "age": age,
+                    "gender": gender
                 }
                 
                 if not cat_df[(cat_df['name'] == cat_record['name']) & 
                             (cat_df['link'] == cat_record['link']) & 
-                            (cat_df['age'] == cat_record['age'])].empty:
+                            (cat_df['age'] == cat_record['age']).empty & 
+                            (cat_df['gender'] == cat_record['gender'])].empty:
                     logging.info(f'Cat {name} already exists in database')
                 else:
                     if age is not None and isinstance(age, (int, float)) and age <= 4:
@@ -163,7 +178,7 @@ def check_cats():
                         cat_df.loc[len(cat_df)] = cat_record
                         new_cats.append(cat_record)
                     else:
-                        logging.info(f'{name} is too old or age not available')
+                        logging.info(f'{name} is too old, skipping.')
                 
             except Exception as e:
                 logging.error(f"Error processing cat: {str(e)}")
