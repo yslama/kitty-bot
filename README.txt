@@ -16,91 +16,84 @@ A Python script that monitors the SF SPCA website for new kittens and sends emai
 
 ## Installation
 
-1. Clone this repository:
-
-```bash
-git clone https://github.com/yourusername/kitty-checker-bot.git
-cd kitty-checker-bot
-```
-
-2. Install dependencies:
-
-```bash 
-pip install -r requirements.txt
-```
-
-## Configuration
-
-### Email Setup
-1. Create a Gmail App Password:
-   - Go to your [Google Account Security Settings](https://myaccount.google.com/security)
-   - Enable 2-Step Verification if not already enabled
-   - Go to App Passwords (at the bottom of the page)
-   - Generate a new app password for "Mail" and your application
-
-2. Set up environment variables:
-   Create a `.env` file in the project root with:
-   ```
-   KITTY_SENDER_EMAIL=your-email@gmail.com
-   KITTY_APP_PASSWORD=your-app-password
-   KITTY_RECEIVER_EMAIL=recipient@email.com
-   ```
-
-   Or set them directly in your terminal:
-   ```bash
-   # Linux/Mac
-   export KITTY_SENDER_EMAIL="your-email@gmail.com"
-   export KITTY_APP_PASSWORD="your-app-password"
-   export KITTY_RECEIVER_EMAIL="recipient@email.com"
-   ```
-
-## Setup
-
-1. Create a `.env` file in the project root with the following variables:
+1. Create a `.env` file in the project root:
 ```
 KITTY_SENDER_EMAIL=your-email@gmail.com
 KITTY_APP_PASSWORD=your-app-password
 KITTY_RECEIVER_EMAIL=recipient@email.com
+DATABASE_URL=postgresql://username@localhost:5432/kitty_db
+```
+
+2. Set up PostgreSQL:
+```bash
+brew install postgresql@15
+brew services start postgresql@15
+createdb kitty_db
+```
+
+3. Install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-For local development, run:
+Run the scheduler:
 ```bash
-python src/main.py
+python -m src.main
 ```
 
-The script will automatically:
-- Create a `data` directory and store kitties.csv
-- Create a `logs` directory and store kitty_checker.log
-- Check for new kittens and send email notifications
+Or use CLI commands:
+```bash
+python -m src.cli check  # Single check
+python -m src.cli list   # List kitties
+python -m src.cli stats  # Show stats
+python -m src.cli recent # Recent kitties
+```
 
 ## Project Structure
 
 ```
 kitty-bot/
 ├── src/
-│   ├── main.py           # Entry point and scheduler
-│   └── kitty_checker.py  # Core functionality
-├── data/                # Created automatically
-│   └── kitties.csv      # Database of found kittens
-├── logs/               # Log files directory
-│   └── kitty_checker.log # Log file
-├── .env                # Environment variables (create this)
+│   ├── __init__.py       # Package identifier
+│   ├── main.py           # Scheduler
+│   ├── kitty_checker.py  # Core functionality
+│   ├── database.py       # Database operations
+│   └── cli.py           # Command-line interface
+├── logs/                # Log files directory
+├── .env                # Environment variables
 ├── .gitignore          # Git ignore file
 ├── requirements.txt    # Python dependencies
 ├── Procfile           # Railway process file
 ├── runtime.txt        # Python version specification
-├── README.txt          # Project documentation
-└── LICENSE            # MIT License file
+├── README.txt         # Project documentation
+└── LICENSE           # MIT License file
 ```
+
+## Database Schema
+
+Table: kitties
+- id (Primary Key)
+- name (String)
+- age (Integer)
+- gender (String)
+- link (String, Unique)
+- found_at (DateTime)
 
 ## Deployment
 
-This project is configured for Railway deployment. The following files are used:
-- `requirements.txt`: Lists all Python dependencies
-- `Procfile`: Specifies the command to run the worker
-- `runtime.txt`: Specifies the Python version
+1. Add PostgreSQL database on Railway
+2. Set environment variables
+3. Deploy using Railway CLI or GitHub integration
+
+## Monitoring
+
+- Railway logs: `railway logs`
+- CLI stats: `python -m src.cli stats`
+- Email notifications for new kitties
 
 ## Logging
 - Logs are written to `kitty_checker.log`
@@ -114,3 +107,28 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Disclaimer
 This script is not affiliated with SF SPCA. Please use responsibly and in accordance with SF SPCA's terms of service.
+
+## CLI Usage
+
+The application provides a command-line interface for various operations:
+
+```bash
+# Run a single check for new kittens
+python -m src.cli check
+
+# List all kitties in database
+python -m src.cli list
+
+# Show statistics
+python -m src.cli stats
+
+# Show recent kitties (default: last 7 days)
+python -m src.cli recent
+python -m src.cli recent --days 14
+```
+
+Available Commands:
+- `check`: Run a single check for new kittens
+- `list`: Show all kitties in the database
+- `stats`: Display statistics about found kitties
+- `recent`: Show recently found kitties

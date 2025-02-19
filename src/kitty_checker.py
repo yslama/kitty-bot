@@ -5,7 +5,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-import pandas as pd
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -14,14 +13,16 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-load_dotenv()  # Add this line after the imports
+from . import database
+
+load_dotenv()
 
 # Get project root directory
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 
 # Set up logging
 log_dir = os.path.join(PROJECT_ROOT, 'logs')
-os.makedirs(log_dir, exist_ok=True)  # Create logs directory if it doesn't exist
+os.makedirs(log_dir, exist_ok=True)
 
 logging.basicConfig(
     filename=os.path.join(log_dir, 'kitty_checker.log'),
@@ -29,19 +30,14 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Constants
-CAT_PATH = os.path.join(PROJECT_ROOT, "data", "kitties.csv")
-
 def extract_details(facts_text):
     age_match = re.search(r'Age:\s*([\d]{1}) m', facts_text)
     gender_match = re.search(r'Gender:\s*(Male)', facts_text)
 
     if age_match and gender_match:
-        print(f"Age: {age_match.group(1).strip()}, Gender: {gender_match.group(1).strip()}")
+        # print(f"Age: {age_match.group(1).strip()}, Gender: {gender_match.group(1).strip()}")
         return int(age_match.group(1).strip()), gender_match.group(1).strip()
     return None, None
-
-
 
 def get_age(link):
     options = Options()
@@ -60,6 +56,7 @@ def get_age(link):
         try:
             facts_element = driver.find_element(By.CLASS_NAME, "adoptionFacts__div")
             facts = facts_element.text
+            logging.info(f"Facts: {facts}")
             age, gender = extract_details(facts)
             if age is not None and gender is not None: 
                 return age, gender
@@ -120,14 +117,16 @@ def send_summary_email(new_cats):
 def check_cats():
     logging.info("Starting cat check")
     
-    # Create data directory if it doesn't exist
-    os.makedirs(os.path.dirname(CAT_PATH), exist_ok=True)
-    
     try:
-        cat_df = pd.read_csv(CAT_PATH)
-    except FileNotFoundError:
-        cat_df = pd.DataFrame(columns=['name', 'link', 'age'])
-        
+        # Initialize database
+        logging.info("Initializing database...")
+        database.init_db()
+        logging.info("Database initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize database: {str(e)}")
+        return  # Exit the function if database initialization fails
+    
+    new_cats = []
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
@@ -135,7 +134,6 @@ def check_cats():
     options.add_argument("--disable-dev-shm-usage")
 
     driver = webdriver.Chrome(options=options)
-    new_cats = []
 
     try:
         logging.info("Checking for new kitties...")
@@ -151,45 +149,55 @@ def check_cats():
                 name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
                 name = name_element.text
                 link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                
+                # Check if cat already exists in database by link
+                if database.cat_exists(link):
+                    logging.info(f"Cat {name} already exists in database, skipping")
+                    continue
+                
                 result = get_age(link)
                 
                 # Skip if we couldn't get age and gender
                 if result is None or result == (None, None):
-                    logging.info(f"Skipping {name}: not be the perfect kitty bro for Miske!")
+                    logging.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
                     continue
                     
                 age, gender = result
-
-                cat_record = {
-                    "name": name,
-                    "link": link,
-                    "age": age,
-                    "gender": gender
-                }
                 
-                if not cat_df[(cat_df['name'] == cat_record['name']) & 
-                            (cat_df['link'] == cat_record['link']) & 
-                            (cat_df['age'] == cat_record['age']).empty & 
-                            (cat_df['gender'] == cat_record['gender'])].empty:
-                    logging.info(f'Cat {name} already exists in database')
+                if age is not None and isinstance(age, (int, float)) and age <= 4 and gender is not None:
+                    # Try to add to database
+                    if database.add_kitty(name, age, gender, link):
+                        new_cats.append({
+                            "name": name,
+                            "age": age,
+                            "gender": gender,
+                            "link": link
+                        })
+                        logging.info(f"Added new cat: {name} ({age} months, {gender})")
                 else:
-                    if age is not None and isinstance(age, (int, float)) and age <= 4:
-                        logging.info(f'Adding {name} to database')
-                        cat_df.loc[len(cat_df)] = cat_record
-                        new_cats.append(cat_record)
-                    else:
-                        logging.info(f'{name} is too old, skipping.')
-                
+                    logging.info(f'{name} is too old or wrong gender, skipping.')
+                    
             except Exception as e:
                 logging.error(f"Error processing cat: {str(e)}")
 
-        cat_df.to_csv(CAT_PATH, index=False)
-        
         if new_cats:
             send_summary_email(new_cats)
             logging.info(f"Added {len(new_cats)} new cats to the database")
         else:
             logging.info("No new cats to add")
+            
+        # Display current database contents
+        all_cats = database.get_all_kitties()
+        logging.info("\nCurrent Database Contents:")
+        logging.info("-" * 50)
+        for cat in all_cats:
+            logging.info(f"Name: {cat.name}")
+            logging.info(f"Age: {cat.age} months")
+            logging.info(f"Gender: {cat.gender}")
+            logging.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            logging.info(f"Link: {cat.link}")
+            logging.info("-" * 50)
+        logging.info(f"Total cats in database: {len(all_cats)}")
             
     except Exception as e:
         logging.error(f"Error in main process: {str(e)}")

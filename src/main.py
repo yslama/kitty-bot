@@ -32,19 +32,32 @@ def job():
 def main():
     logging.info("Starting kitty checker service")
     
-    # Run immediately if within business hours
-    if is_business_hours():
-        job()
-    else:
-        logging.info("Starting outside business hours, waiting for next business day")
-    
-    # Schedule to run every 15 minutes
-    schedule.every(15).minutes.do(job)
-    
-    # Keep the script running
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    try:
+        # Test database connection at startup
+        from . import database
+        database.init_db()
+        logging.info("Database connection verified")
+        
+        # Run immediately if within business hours
+        if is_business_hours():
+            job()
+        else:
+            logging.info("Starting outside business hours, waiting for next business day")
+        
+        # Schedule to run every 15 minutes
+        schedule.every(15).minutes.do(job)
+        
+        # Keep the script running
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+            
+    except KeyboardInterrupt:
+        logging.info("Received keyboard interrupt, shutting down...")
+        return
+    except Exception as e:
+        logging.error(f"Critical error in main: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main() 
