@@ -33,6 +33,24 @@ def health():
         'python_version': sys.version
     }
 
+@app.route('/debug/run-check')
+def debug_run_check():
+    try:
+        logging.info("Manual check triggered via debug endpoint")
+        job()
+        return {
+            'status': 'success',
+            'message': 'Check completed, see logs for details',
+            'time': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logging.error(f"Error in debug check: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e),
+            'time': datetime.now().isoformat()
+        }
+
 def run_scheduler():
     while True:
         schedule.run_pending()
