@@ -2,6 +2,8 @@
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -119,7 +121,7 @@ def check_cats():
     
     max_retries = 3
     retry_count = 0
-    driver = None  # Initialize driver variable
+    driver = None
     
     while retry_count < max_retries:
         try:
@@ -137,7 +139,6 @@ def check_cats():
             time.sleep(5)
     
     try:
-        # Log the check process
         logger.info("Opening web browser...")
         new_cats = []
         options = Options()
@@ -145,9 +146,14 @@ def check_cats():
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-
+        options.add_argument("--disable-setuid-sandbox")
+        
+        # Use ChromeDriverManager to handle driver installation
+        logger.info("Setting up Chrome service...")
+        service = Service(ChromeDriverManager().install())
+        
         logger.info("Setting up Chrome options...")
-        driver = webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(service=service, options=options)
         logger.info("Chrome driver initialized successfully")
 
         logger.info("Navigating to SF SPCA website...")
@@ -163,6 +169,7 @@ def check_cats():
         logger.info(f"Found {len(cat_items)} cats on page")
         
         for idx, item in enumerate(cat_items, 1):
+            
             try:
                 name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
                 name = name_element.text
