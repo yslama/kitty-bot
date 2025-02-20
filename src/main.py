@@ -19,6 +19,22 @@ logging.basicConfig(
     ]
 )
 
+# Create logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Remove any existing handlers
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+# Add stdout handler
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(stdout_handler)
+
+# Test log
+logger.info("Logging system initialized")
+
 app = Flask(__name__)
 
 @app.route('/')

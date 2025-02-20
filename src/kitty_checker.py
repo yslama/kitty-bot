@@ -25,11 +25,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 log_dir = os.path.join(PROJECT_ROOT, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 
-logging.basicConfig(
-    filename=os.path.join(log_dir, 'kitty_checker.log'),
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logger = logging.getLogger()
 
 database_url = os.getenv('DATABASE_URL')
 
@@ -59,23 +55,23 @@ def get_age(link):
         try:
             facts_element = driver.find_element(By.CLASS_NAME, "adoptionFacts__div")
             facts = facts_element.text
-            logging.info(f"Facts: {facts}")
+            logger.info(f"Facts: {facts}")
             age, gender = extract_details(facts)
             if age is not None and gender is not None: 
                 return age, gender
         except Exception as e:
-            logging.error(f"Error finding facts: {str(e)}")
+            logger.error(f"Error finding facts: {str(e)}")
             return None, None
             
     except Exception as e:
-        logging.error(f"Error loading page: {str(e)}")
+        logger.error(f"Error loading page: {str(e)}")
         return None, None
     finally:
         driver.quit()
 
 def send_summary_email(new_cats):
     if not new_cats:
-        logging.info("No new cats to report")
+        logger.info("No new cats to report")
         return
         
     # Get email credentials from environment variables
@@ -84,7 +80,7 @@ def send_summary_email(new_cats):
     receiver_email = os.environ.get('KITTY_RECEIVER_EMAIL')
     
     if not all([sender_email, sender_password, receiver_email]):
-        logging.error("Missing email configuration. Please set KITTY_SENDER_EMAIL, KITTY_APP_PASSWORD, and KITTY_RECEIVER_EMAIL environment variables.")
+        logger.error("Missing email configuration. Please set KITTY_SENDER_EMAIL, KITTY_APP_PASSWORD, and KITTY_RECEIVER_EMAIL environment variables.")
         return
     
     message = MIMEMultipart()
@@ -111,15 +107,15 @@ def send_summary_email(new_cats):
         server.login(sender_email, sender_password)
         text = message.as_string()
         server.sendmail(sender_email, receiver_email, text)
-        logging.info(f"Summary email sent for {len(new_cats)} new kittens!")
+        logger.info(f"Summary email sent for {len(new_cats)} new kittens!")
     except Exception as e:
-        logging.error(f"Error sending email: {str(e)}")
+        logger.error(f"Error sending email: {str(e)}")
     finally:
         server.quit()
 
 def check_cats():
-    logging.info("=== Starting New Check ===")
-    logging.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=== Starting New Check ===")
+    logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     max_retries = 3
     retry_count = 0
@@ -127,24 +123,24 @@ def check_cats():
     while retry_count < max_retries:
         try:
             # Initialize database
-            logging.info("Initializing database...")
+            logger.info("Initializing database...")
             database.init_db()
-            logging.info("Database initialized successfully")
+            logger.info("Database initialized successfully")
             break
         except Exception as e:
             retry_count += 1
             if retry_count == max_retries:
-                logging.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
+                logger.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
                 return
-            logging.warning(f"Database initialization attempt {retry_count} failed, retrying...")
+            logger.warning(f"Database initialization attempt {retry_count} failed, retrying...")
             time.sleep(5)  # Wait 5 seconds before retrying
     
-    logging.info("=== Starting New Check ===")
-    logging.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=== Starting New Check ===")
+    logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     try:
         # Log the check process
-        logging.info("Opening web browser...")
+        logger.info("Opening web browser...")
         new_cats = []
         options = Options()
         options.add_argument("--headless")
@@ -155,7 +151,7 @@ def check_cats():
         driver = webdriver.Chrome(options=options)
 
         try:
-            logging.info("Checking for new kitties...")
+            logger.info("Checking for new kitties...")
             driver.get('https://www.sfspca.org/adoptions/cats/')
             
             wait = WebDriverWait(driver, 15)
@@ -171,14 +167,14 @@ def check_cats():
                     
                     # Check if cat already exists in database by link
                     if database.cat_exists(link):
-                        logging.info(f"Cat {name} already exists in database, skipping")
+                        logger.info(f"Cat {name} already exists in database, skipping")
                         continue
                     
                     result = get_age(link)
                     
                     # Skip if we couldn't get age and gender
                     if result is None or result == (None, None):
-                        logging.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
+                        logger.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
                         continue
                         
                     age, gender = result
@@ -192,38 +188,38 @@ def check_cats():
                                 "gender": gender,
                                 "link": link
                             })
-                            logging.info(f"Added new cat: {name} ({age} months, {gender})")
+                            logger.info(f"Added new cat: {name} ({age} months, {gender})")
                     else:
-                        logging.info(f'{name} is too old or wrong gender, skipping.')
+                        logger.info(f'{name} is too old or wrong gender, skipping.')
                     
                 except Exception as e:
-                    logging.error(f"Error processing cat: {str(e)}")
+                    logger.error(f"Error processing cat: {str(e)}")
 
             if new_cats:
                 send_summary_email(new_cats)
-                logging.info(f"✨ Found {len(new_cats)} new cats!")
+                logger.info(f"✨ Found {len(new_cats)} new cats!")
                 for cat in new_cats:
-                    logging.info(f"New cat: {cat['name']} ({cat['age']} months)")
+                    logger.info(f"New cat: {cat['name']} ({cat['age']} months)")
             else:
-                logging.info("No new cats found this time")
+                logger.info("No new cats found this time")
             
             # Display current database contents
             all_cats = database.get_all_kitties()
-            logging.info("\nCurrent Database Contents:")
-            logging.info("-" * 50)
+            logger.info("\nCurrent Database Contents:")
+            logger.info("-" * 50)
             for cat in all_cats:
-                logging.info(f"Name: {cat.name}")
-                logging.info(f"Age: {cat.age} months")
-                logging.info(f"Gender: {cat.gender}")
-                logging.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                logging.info(f"Link: {cat.link}")
-                logging.info("-" * 50)
-            logging.info(f"Total cats in database: {len(all_cats)}")
+                logger.info(f"Name: {cat.name}")
+                logger.info(f"Age: {cat.age} months")
+                logger.info(f"Gender: {cat.gender}")
+                logger.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(f"Link: {cat.link}")
+                logger.info("-" * 50)
+            logger.info(f"Total cats in database: {len(all_cats)}")
             
         except Exception as e:
-            logging.error(f"❌ Error during check: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error during check: {str(e)}", exc_info=True)
     finally:
-        logging.info("=== Check Complete ===\n")
+        logger.info("=== Check Complete ===\n")
         driver.quit()
 
 if __name__ == "__main__":
