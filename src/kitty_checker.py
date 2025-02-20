@@ -119,6 +119,7 @@ def check_cats():
     
     max_retries = 3
     retry_count = 0
+    driver = None  # Initialize driver variable
     
     while retry_count < max_retries:
         try:
@@ -133,10 +134,7 @@ def check_cats():
                 logger.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
                 return
             logger.warning(f"Database initialization attempt {retry_count} failed, retrying...")
-            time.sleep(5)  # Wait 5 seconds before retrying
-    
-    logger.info("=== Starting New Check ===")
-    logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            time.sleep(5)
     
     try:
         # Log the check process
@@ -148,79 +146,92 @@ def check_cats():
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
+        logger.info("Setting up Chrome options...")
         driver = webdriver.Chrome(options=options)
+        logger.info("Chrome driver initialized successfully")
 
-        try:
-            logger.info("Checking for new kitties...")
-            driver.get('https://www.sfspca.org/adoptions/cats/')
-            
-            wait = WebDriverWait(driver, 15)
-            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoption__item")))
-            
-            cat_items = driver.find_elements(By.CLASS_NAME, "adoption__item")
-            
-            for item in cat_items:
-                try:
-                    name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
-                    name = name_element.text
-                    link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+        logger.info("Navigating to SF SPCA website...")
+        driver.get('https://www.sfspca.org/adoptions/cats/')
+        logger.info("Website loaded successfully")
+        
+        wait = WebDriverWait(driver, 15)
+        logger.info("Waiting for cat listings to load...")
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoption__item")))
+        logger.info("Cat listings loaded successfully")
+        
+        cat_items = driver.find_elements(By.CLASS_NAME, "adoption__item")
+        logger.info(f"Found {len(cat_items)} cats on page")
+        
+        for idx, item in enumerate(cat_items, 1):
+            try:
+                name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
+                name = name_element.text
+                link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                logger.info(f"Processing cat {idx}/{len(cat_items)}: {name}")
+                
+                # Check if cat already exists in database by link
+                if database.cat_exists(link):
+                    logger.info(f"Cat {name} already exists in database, skipping")
+                    continue
+                
+                logger.info(f"Checking details for {name}...")
+                result = get_age(link)
+                
+                # Skip if we couldn't get age and gender
+                if result is None or result == (None, None):
+                    logger.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
+                    continue
                     
-                    # Check if cat already exists in database by link
-                    if database.cat_exists(link):
-                        logger.info(f"Cat {name} already exists in database, skipping")
-                        continue
-                    
-                    result = get_age(link)
-                    
-                    # Skip if we couldn't get age and gender
-                    if result is None or result == (None, None):
-                        logger.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
-                        continue
-                        
-                    age, gender = result
-                    
-                    if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
-                        # Try to add to database
-                        if database.add_kitty(name, age, gender, link):
-                            new_cats.append({
-                                "name": name,
-                                "age": age,
-                                "gender": gender,
-                                "link": link
-                            })
-                            logger.info(f"Added new cat: {name} ({age} months, {gender})")
-                    else:
-                        logger.info(f'{name} is too old or wrong gender, skipping.')
-                    
-                except Exception as e:
-                    logger.error(f"Error processing cat: {str(e)}")
+                age, gender = result
+                logger.info(f"Found cat: {name}, Age: {age} months, Gender: {gender}")
+                
+                if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
+                    # Try to add to database
+                    if database.add_kitty(name, age, gender, link):
+                        new_cats.append({
+                            "name": name,
+                            "age": age,
+                            "gender": gender,
+                            "link": link
+                        })
+                        logger.info(f"Added new cat: {name} ({age} months, {gender})")
+                else:
+                    logger.info(f'{name} is too old or wrong gender, skipping.')
+                
+            except Exception as e:
+                logger.error(f"Error processing cat {name if 'name' in locals() else 'unknown'}: {str(e)}")
 
-            if new_cats:
-                send_summary_email(new_cats)
-                logger.info(f"✨ Found {len(new_cats)} new cats!")
-                for cat in new_cats:
-                    logger.info(f"New cat: {cat['name']} ({cat['age']} months)")
-            else:
-                logger.info("No new cats found this time")
-            
-            # Display current database contents
-            all_cats = database.get_all_kitties()
-            logger.info("\nCurrent Database Contents:")
+        if new_cats:
+            logger.info("Sending email notification...")
+            send_summary_email(new_cats)
+            logger.info(f"✨ Found {len(new_cats)} new cats!")
+            for cat in new_cats:
+                logger.info(f"New cat: {cat['name']} ({cat['age']} months)")
+        else:
+            logger.info("No new cats found this time")
+        
+        # Display current database contents
+        logger.info("Retrieving current database contents...")
+        all_cats = database.get_all_kitties()
+        logger.info("\nCurrent Database Contents:")
+        logger.info("-" * 50)
+        for cat in all_cats:
+            logger.info(f"Name: {cat.name}")
+            logger.info(f"Age: {cat.age} months")
+            logger.info(f"Gender: {cat.gender}")
+            logger.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"Link: {cat.link}")
             logger.info("-" * 50)
-            for cat in all_cats:
-                logger.info(f"Name: {cat.name}")
-                logger.info(f"Age: {cat.age} months")
-                logger.info(f"Gender: {cat.gender}")
-                logger.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                logger.info(f"Link: {cat.link}")
-                logger.info("-" * 50)
-            logger.info(f"Total cats in database: {len(all_cats)}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error during check: {str(e)}", exc_info=True)
+        logger.info(f"Total cats in database: {len(all_cats)}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during check: {str(e)}", exc_info=True)
     finally:
+        if driver:  # Only quit if driver was initialized
+            logger.info("Closing Chrome driver...")
+            driver.quit()
+            logger.info("Chrome driver closed successfully")
         logger.info("=== Check Complete ===\n")
-        driver.quit()
 
 if __name__ == "__main__":
     check_cats() 
