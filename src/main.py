@@ -5,12 +5,21 @@ import time
 from .kitty_checker import check_cats  # Add the dot to indicate relative import
 import logging
 from datetime import datetime
+import sys
 
-# Set up logging
+# Modified logging setup for Railway
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # This ensures logs go to Railway
+    ]
 )
+
+# Add some startup logs
+logging.info("=== Kitty Bot Starting ===")
+logging.info(f"Python version: {sys.version}")
+logging.info("Initializing services...")
 
 def is_business_hours():
     """Check if current time is between 9 AM and 6 PM"""

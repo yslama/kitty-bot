@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 import os
 from datetime import datetime, timedelta
 import logging
@@ -18,8 +19,16 @@ if DATABASE_URL is None:
     DATABASE_URL=postgresql://username:password@localhost:5432/dbname
     """)
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# Modified engine creation with connection pooling settings
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,  # Maximum number of connections to keep
+    max_overflow=2,  # Maximum number of connections that can be created beyond pool_size
+    pool_timeout=30,  # Timeout for getting a connection from the pool
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    pool_pre_ping=True,  # Enable connection health checks
+    poolclass=QueuePool  # Use QueuePool for better connection management
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -48,12 +57,25 @@ def init_db():
         raise  # Re-raise the exception to handle it in the calling code
 
 def get_db():
+    db = None
     try:
         db = SessionLocal()
+        # Test the connection
+        db.execute("SELECT 1")
         return db
     except Exception as e:
-        logging.error(f"Error getting database session: {str(e)}")
-        raise  # Re-raise the exception to handle it in the calling code
+        logging.error(f"Database connection error: {str(e)}")
+        if db:
+            db.close()
+        # Wait and retry once
+        import time
+        time.sleep(1)
+        try:
+            db = SessionLocal()
+            return db
+        except Exception as retry_error:
+            logging.error(f"Retry failed: {str(retry_error)}")
+            raise
 
 def add_kitty(name, age, gender, link):
     db = get_db()

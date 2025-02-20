@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from . import database
+import time
 
 load_dotenv()
 
@@ -117,93 +118,112 @@ def send_summary_email(new_cats):
         server.quit()
 
 def check_cats():
-    logging.info("Starting cat check")
+    logging.info("=== Starting New Check ===")
+    logging.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Initialize database
+            logging.info("Initializing database...")
+            database.init_db()
+            logging.info("Database initialized successfully")
+            break
+        except Exception as e:
+            retry_count += 1
+            if retry_count == max_retries:
+                logging.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
+                return
+            logging.warning(f"Database initialization attempt {retry_count} failed, retrying...")
+            time.sleep(5)  # Wait 5 seconds before retrying
+    
+    logging.info("=== Starting New Check ===")
+    logging.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     try:
-        # Initialize database
-        logging.info("Initializing database...")
-        database.init_db()
-        logging.info("Database initialized successfully")
-    except Exception as e:
-        logging.error(f"Failed to initialize database: {str(e)}")
-        return  # Exit the function if database initialization fails
-    
-    new_cats = []
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+        # Log the check process
+        logging.info("Opening web browser...")
+        new_cats = []
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
 
-    driver = webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(options=options)
 
-    try:
-        logging.info("Checking for new kitties...")
-        driver.get('https://www.sfspca.org/adoptions/cats/')
-        
-        wait = WebDriverWait(driver, 15)
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoption__item")))
-        
-        cat_items = driver.find_elements(By.CLASS_NAME, "adoption__item")
-        
-        for item in cat_items:
-            try:
-                name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
-                name = name_element.text
-                link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
-                
-                # Check if cat already exists in database by link
-                if database.cat_exists(link):
-                    logging.info(f"Cat {name} already exists in database, skipping")
-                    continue
-                
-                result = get_age(link)
-                
-                # Skip if we couldn't get age and gender
-                if result is None or result == (None, None):
-                    logging.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
-                    continue
-                    
-                age, gender = result
-                
-                if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
-                    # Try to add to database
-                    if database.add_kitty(name, age, gender, link):
-                        new_cats.append({
-                            "name": name,
-                            "age": age,
-                            "gender": gender,
-                            "link": link
-                        })
-                        logging.info(f"Added new cat: {name} ({age} months, {gender})")
-                else:
-                    logging.info(f'{name} is too old or wrong gender, skipping.')
-                    
-            except Exception as e:
-                logging.error(f"Error processing cat: {str(e)}")
-
-        if new_cats:
-            send_summary_email(new_cats)
-            logging.info(f"Added {len(new_cats)} new cats to the database")
-        else:
-            logging.info("No new cats to add")
+        try:
+            logging.info("Checking for new kitties...")
+            driver.get('https://www.sfspca.org/adoptions/cats/')
             
-        # Display current database contents
-        all_cats = database.get_all_kitties()
-        logging.info("\nCurrent Database Contents:")
-        logging.info("-" * 50)
-        for cat in all_cats:
-            logging.info(f"Name: {cat.name}")
-            logging.info(f"Age: {cat.age} months")
-            logging.info(f"Gender: {cat.gender}")
-            logging.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            logging.info(f"Link: {cat.link}")
+            wait = WebDriverWait(driver, 15)
+            wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoption__item")))
+            
+            cat_items = driver.find_elements(By.CLASS_NAME, "adoption__item")
+            
+            for item in cat_items:
+                try:
+                    name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
+                    name = name_element.text
+                    link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                    
+                    # Check if cat already exists in database by link
+                    if database.cat_exists(link):
+                        logging.info(f"Cat {name} already exists in database, skipping")
+                        continue
+                    
+                    result = get_age(link)
+                    
+                    # Skip if we couldn't get age and gender
+                    if result is None or result == (None, None):
+                        logging.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
+                        continue
+                        
+                    age, gender = result
+                    
+                    if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
+                        # Try to add to database
+                        if database.add_kitty(name, age, gender, link):
+                            new_cats.append({
+                                "name": name,
+                                "age": age,
+                                "gender": gender,
+                                "link": link
+                            })
+                            logging.info(f"Added new cat: {name} ({age} months, {gender})")
+                    else:
+                        logging.info(f'{name} is too old or wrong gender, skipping.')
+                    
+                except Exception as e:
+                    logging.error(f"Error processing cat: {str(e)}")
+
+            if new_cats:
+                send_summary_email(new_cats)
+                logging.info(f"✨ Found {len(new_cats)} new cats!")
+                for cat in new_cats:
+                    logging.info(f"New cat: {cat['name']} ({cat['age']} months)")
+            else:
+                logging.info("No new cats found this time")
+            
+            # Display current database contents
+            all_cats = database.get_all_kitties()
+            logging.info("\nCurrent Database Contents:")
             logging.info("-" * 50)
-        logging.info(f"Total cats in database: {len(all_cats)}")
+            for cat in all_cats:
+                logging.info(f"Name: {cat.name}")
+                logging.info(f"Age: {cat.age} months")
+                logging.info(f"Gender: {cat.gender}")
+                logging.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                logging.info(f"Link: {cat.link}")
+                logging.info("-" * 50)
+            logging.info(f"Total cats in database: {len(all_cats)}")
             
-    except Exception as e:
-        logging.error(f"Error in main process: {str(e)}")
+        except Exception as e:
+            logging.error(f"❌ Error during check: {str(e)}", exc_info=True)
     finally:
+        logging.info("=== Check Complete ===\n")
         driver.quit()
 
 if __name__ == "__main__":
