@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 
-from playwright.sync_api import sync_playwright
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -34,24 +40,36 @@ def extract_details(facts_text):
         return int(age_match.group(1).strip()), gender_match.group(1).strip()
     return None, None
 
-def get_age(browser, link):
+def get_age(link):
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+
+    driver = webdriver.Chrome(options=options)
+
     try:
-        # Create a new page for each cat
-        page = browser.new_page()
-        page.goto(link)
-        facts_element = page.wait_for_selector(".adoptionFacts__div", timeout=15000)
-        if facts_element:
-            facts = facts_element.text_content()
+        driver.get(link)
+        wait = WebDriverWait(driver, 15)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoptionFacts__div")))
+        
+        try:
+            facts_element = driver.find_element(By.CLASS_NAME, "adoptionFacts__div")
+            facts = facts_element.text
             logger.info(f"Facts: {facts}")
             age, gender = extract_details(facts)
-            page.close()  # Close the page after we're done
             if age is not None and gender is not None: 
                 return age, gender
+        except Exception as e:
+            logger.error(f"Error finding facts: {str(e)}")
+            return None, None
+            
     except Exception as e:
-        logger.error(f"Error finding facts: {str(e)}")
-        if 'page' in locals():
-            page.close()
-    return None, None
+        logger.error(f"Error loading page: {str(e)}")
+        return None, None
+    finally:
+        driver.quit()
 
 def send_summary_email(new_cats):
     if not new_cats:
@@ -101,103 +119,115 @@ def check_cats():
     logger.info("=== Starting New Check ===")
     logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    with sync_playwright() as p:
-        try:
-            logger.info("Launching browser...")
-            browser = p.chromium.launch(headless=True)
-            main_page = browser.new_page()
+    max_retries = 3
+    retry_count = 0
+    driver = None
+    
+    try:
+        logger.info("Opening web browser...")
+        new_cats = []
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--remote-debugging-port=9222")
+        options.binary_location = os.getenv("GOOGLE_CHROME_BIN", "/usr/bin/google-chrome")
+        
+        logger.info("Chrome binary location: " + options.binary_location)
+        
+        # Use ChromeDriverManager to handle driver installation
+        logger.info("Setting up Chrome service...")
+        service = Service(ChromeDriverManager().install())
+        
+        logger.info("Setting up Chrome options...")
+        driver = webdriver.Chrome(service=service, options=options)
+        logger.info("Chrome driver initialized successfully")
+
+        logger.info("Navigating to SF SPCA website...")
+        driver.get('https://www.sfspca.org/adoptions/cats/')
+        logger.info("Website loaded successfully")
+        
+        wait = WebDriverWait(driver, 15)
+        logger.info("Waiting for cat listings to load...")
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "adoption__item")))
+        logger.info("Cat listings loaded successfully")
+        
+        cat_items = driver.find_elements(By.CLASS_NAME, "adoption__item")
+        logger.info(f"Found {len(cat_items)} cats on page")
+        
+        for idx, item in enumerate(cat_items, 1):
             
-            logger.info("Navigating to SF SPCA website...")
-            main_page.goto('https://www.sfspca.org/adoptions/cats/')
-            logger.info("Website loaded successfully")
-            
-            # Wait for cat listings to load
-            logger.info("Waiting for cat listings to load...")
-            main_page.wait_for_selector(".adoption__item", timeout=15000)
-            logger.info("Cat listings loaded successfully")
-            
-            # Get all cat items
-            cat_items = main_page.query_selector_all(".adoption__item")
-            logger.info(f"Found {len(cat_items)} cats on page")
-            
-            new_cats = []
-            for idx, item in enumerate(cat_items, 1):
-                try:
-                    name_element = item.query_selector(".adoption__item--name")
-                    if not name_element:
-                        continue
-                        
-                    name = name_element.text_content().strip()
-                    link_element = name_element.query_selector("a")
-                    if not link_element:
-                        continue
-                        
-                    link = link_element.get_attribute("href")
-                    if not link:
-                        continue
-                        
-                    logger.info(f"Processing cat {idx}/{len(cat_items)}: {name}")
+            try:
+                name_element = item.find_element(By.CLASS_NAME, "adoption__item--name")
+                name = name_element.text
+                link = name_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                logger.info(f"Processing cat {idx}/{len(cat_items)}: {name}")
+                
+                # Check if cat already exists in database by link
+                if database.cat_exists(link):
+                    logger.info(f"Cat {name} already exists in database, skipping")
+                    continue
+                
+                logger.info(f"Checking details for {name}...")
+                result = get_age(link)
+                
+                # Skip if we couldn't get age and gender
+                if result is None or result == (None, None):
+                    logger.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
+                    continue
                     
-                    # Check if cat already exists in database
-                    if database.cat_exists(link):
-                        logger.info(f"Cat {name} already exists in database, skipping")
-                        continue
-                    
-                    logger.info(f"Checking details for {name}...")
-                    age, gender = get_age(browser, link)
-                    
-                    if age is None or gender is None:
-                        logger.info(f"Skipping {name}: may not be the perfect kitty bro for Miske!")
-                        continue
-                    
-                    logger.info(f"Found cat: {name}, Age: {age} months, Gender: {gender}")
-                    
-                    if age <= 8:
-                        if database.add_kitty(name, age, gender, link):
-                            new_cats.append({
-                                "name": name,
-                                "age": age,
-                                "gender": gender,
-                                "link": link
-                            })
-                            logger.info(f"Added new cat: {name} ({age} months, {gender})")
-                    else:
-                        logger.info(f'{name} is too old, skipping.')
-                        
-                except Exception as e:
-                    logger.error(f"Error processing cat {name if 'name' in locals() else 'unknown'}: {str(e)}")
-            
-            main_page.close()
-            
-            if new_cats:
-                logger.info("Sending email notification...")
-                send_summary_email(new_cats)
-                logger.info(f"✨ Found {len(new_cats)} new cats!")
-                for cat in new_cats:
-                    logger.info(f"New cat: {cat['name']} ({cat['age']} months)")
-            else:
-                logger.info("No new cats found this time")
-            
-            # Display current database contents
-            logger.info("Retrieving current database contents...")
-            all_cats = database.get_all_kitties()
-            logger.info("\nCurrent Database Contents:")
+                age, gender = result
+                logger.info(f"Found cat: {name}, Age: {age} months, Gender: {gender}")
+                
+                if age is not None and isinstance(age, (int, float)) and age <= 8 and gender is not None:
+                    # Try to add to database
+                    if database.add_kitty(name, age, gender, link):
+                        new_cats.append({
+                            "name": name,
+                            "age": age,
+                            "gender": gender,
+                            "link": link
+                        })
+                        logger.info(f"Added new cat: {name} ({age} months, {gender})")
+                else:
+                    logger.info(f'{name} is too old or wrong gender, skipping.')
+                
+            except Exception as e:
+                logger.error(f"Error processing cat {name if 'name' in locals() else 'unknown'}: {str(e)}")
+
+        if new_cats:
+            logger.info("Sending email notification...")
+            send_summary_email(new_cats)
+            logger.info(f"✨ Found {len(new_cats)} new cats!")
+            for cat in new_cats:
+                logger.info(f"New cat: {cat['name']} ({cat['age']} months)")
+        else:
+            logger.info("No new cats found this time")
+        
+        # Display current database contents
+        logger.info("Retrieving current database contents...")
+        all_cats = database.get_all_kitties()
+        logger.info("\nCurrent Database Contents:")
+        logger.info("-" * 50)
+        for cat in all_cats:
+            logger.info(f"Name: {cat.name}")
+            logger.info(f"Age: {cat.age} months")
+            logger.info(f"Gender: {cat.gender}")
+            logger.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"Link: {cat.link}")
             logger.info("-" * 50)
-            for cat in all_cats:
-                logger.info(f"Name: {cat.name}")
-                logger.info(f"Age: {cat.age} months")
-                logger.info(f"Gender: {cat.gender}")
-                logger.info(f"Found: {cat.found_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                logger.info(f"Link: {cat.link}")
-                logger.info("-" * 50)
-            logger.info(f"Total cats in database: {len(all_cats)}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error during check: {str(e)}", exc_info=True)
-        finally:
-            if 'browser' in locals():
-                browser.close()
-            logger.info("=== Check Complete ===\n")
+        logger.info(f"Total cats in database: {len(all_cats)}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during check: {str(e)}", exc_info=True)
+    finally:
+        if driver:  # Only quit if driver was initialized
+            logger.info("Closing Chrome driver...")
+            driver.quit()
+            logger.info("Chrome driver closed successfully")
+        logger.info("=== Check Complete ===\n")
 
 if __name__ == "__main__":
     check_cats() 
