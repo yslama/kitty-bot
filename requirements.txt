@@ -74,7 +74,7 @@ PySocks==1.7.1
 python-dateutil==2.9.0.post0
 python-dotenv>=1.0.0
 python-json-logger==3.2.1
-pytz==2025.1
+pytz>=2024.1
 PyYAML==6.0.2
 pyzmq==26.2.1
 referencing==0.36.2
@@ -111,4 +111,3 @@ wsproto==1.2.0
 psycopg2-binary>=2.9.0
 SQLAlchemy>=2.0.0
 click>=8.1.0
-Flask>=2.0.0

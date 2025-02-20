@@ -9,6 +9,7 @@ import sys
 import os
 from flask import Flask
 import threading
+import pytz  # Add this import at the top
 
 # Modified logging setup for Railway
 logging.basicConfig(
@@ -73,8 +74,9 @@ def run_scheduler():
         time.sleep(60)
 
 def is_business_hours():
-    """Check if current time is between 9 AM and 6 PM"""
-    now = datetime.now()
+    """Check if current time is between 9 AM and 6 PM Pacific Time"""
+    pacific_tz = pytz.timezone('America/Los_Angeles')
+    now = datetime.now(pacific_tz)
     return 9 <= now.hour < 19
 
 def job():
