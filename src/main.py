@@ -75,7 +75,7 @@ def run_scheduler():
 def is_business_hours():
     """Check if current time is between 9 AM and 6 PM"""
     now = datetime.now()
-    return 9 <= now.hour < 18
+    return 9 <= now.hour < 19
 
 def job():
     if not is_business_hours():
