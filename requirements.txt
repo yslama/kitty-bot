@@ -112,4 +112,4 @@ widgetsnbextension==4.0.13
 wsproto==1.2.0
 psycopg2-binary>=2.9.0
 SQLAlchemy>=2.0.0
-webdriver_manager>=4.0.0
+playwright>=1.41.0
