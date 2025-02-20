@@ -123,21 +123,6 @@ def check_cats():
     retry_count = 0
     driver = None
     
-    while retry_count < max_retries:
-        try:
-            # Initialize database
-            logger.info("Initializing database...")
-            database.init_db()
-            logger.info("Database initialized successfully")
-            break
-        except Exception as e:
-            retry_count += 1
-            if retry_count == max_retries:
-                logger.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
-                return
-            logger.warning(f"Database initialization attempt {retry_count} failed, retrying...")
-            time.sleep(5)
-    
     try:
         logger.info("Opening web browser...")
         new_cats = []
@@ -147,6 +132,10 @@ def check_cats():
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--remote-debugging-port=9222")
+        options.binary_location = os.getenv("GOOGLE_CHROME_BIN", "/usr/bin/google-chrome")
+        
+        logger.info("Chrome binary location: " + options.binary_location)
         
         # Use ChromeDriverManager to handle driver installation
         logger.info("Setting up Chrome service...")
