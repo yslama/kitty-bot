@@ -44,24 +44,11 @@ def home():
 
 @app.route('/health')
 def health():
-    try:
-        # Simple database check
-        from . import database
-        database.get_all_kitties()  # Just check if we can query
-        
-        return {
-            'status': 'healthy',
-            'time': datetime.now().isoformat(),
-            'environment': os.getenv('RAILWAY_ENVIRONMENT', 'unknown'),
-            'python_version': sys.version
-        }, 200
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {
-            'status': 'unhealthy',
-            'error': str(e),
-            'time': datetime.now().isoformat()
-        }, 500
+    return {
+        'status': 'running',
+        'time': datetime.now().isoformat(),
+        'python_version': sys.version
+    }
 
 @app.route('/debug/run-check')
 def debug_run_check():

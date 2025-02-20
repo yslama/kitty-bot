@@ -4,5 +4,4 @@ builder = "nixpacks"
 [deploy]
 startCommand = "playwright install chromium && python -m src.main"
 healthcheckPath = "/health"
-healthcheckTimeout = 300
-restartPolicyType = "on_failure" 
+healthcheckTimeout = 100
